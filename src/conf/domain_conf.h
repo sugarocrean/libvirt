@@ -141,6 +141,10 @@ typedef virDomainPanicDef *virDomainPanicDefPtr;
 typedef struct _virDomainMemoryDef virDomainMemoryDef;
 typedef virDomainMemoryDef *virDomainMemoryDefPtr;
 
+typedef struct _virDomainCryptoDef virDomainCryptoDef;
+typedef virDomainCryptoDef *virDomainCryptoDefPtr;
+
+
 /* forward declarations virDomainChrSourceDef, required by
  * virDomainNetDef
  */
@@ -185,6 +189,7 @@ typedef enum {
     VIR_DOMAIN_DEVICE_PANIC,
     VIR_DOMAIN_DEVICE_MEMORY,
     VIR_DOMAIN_DEVICE_IOMMU,
+    VIR_DOMAIN_DEVICE_CRYPTO,
 
     VIR_DOMAIN_DEVICE_LAST
 } virDomainDeviceType;
@@ -217,6 +222,7 @@ struct _virDomainDeviceDef {
         virDomainPanicDefPtr panic;
         virDomainMemoryDefPtr memory;
         virDomainIOMMUDefPtr iommu;
+        virDomainCryptoDefPtr crypto;
     } data;
 };
 
@@ -1678,6 +1684,19 @@ struct _virDomainNVRAMDef {
 };
 
 typedef enum {
+    VIR_DOMAIN_CRYPTO_MODEL_VIRTIO,
+    VIR_DOMAIN_CRYPTO_MODEL_NONE,
+
+    VIR_DOMAIN_CRYPTO_MODEL_LAST
+} virDomainCryptoModel;
+
+struct _virDomainCryptoDef {
+    virDomainCryptoModel model;
+    virDomainDeviceInfo info;
+    virDomainVirtioOptionsPtr virtio;
+};
+
+typedef enum {
     VIR_DOMAIN_SHMEM_MODEL_IVSHMEM,
     VIR_DOMAIN_SHMEM_MODEL_IVSHMEM_PLAIN,
     VIR_DOMAIN_SHMEM_MODEL_IVSHMEM_DOORBELL,
@@ -2423,6 +2442,9 @@ struct _virDomainDef {
     size_t npanics;
     virDomainPanicDefPtr *panics;
 
+    size_t ncryptos;
+    virDomainCryptoDefPtr *cryptos;
+
     /* Only 1 */
     virDomainWatchdogDefPtr watchdog;
     virDomainMemballoonDefPtr memballoon;
@@ -2771,6 +2793,7 @@ void virDomainSoundCodecDefFree(virDomainSoundCodecDefPtr def);
 void virDomainSoundDefFree(virDomainSoundDefPtr def);
 void virDomainMemballoonDefFree(virDomainMemballoonDefPtr def);
 void virDomainNVRAMDefFree(virDomainNVRAMDefPtr def);
+void virDomainCryptoDefFree(virDomainCryptoDefPtr def);
 void virDomainWatchdogDefFree(virDomainWatchdogDefPtr def);
 virDomainVideoDefPtr virDomainVideoDefNew(void);
 void virDomainVideoDefFree(virDomainVideoDefPtr def);

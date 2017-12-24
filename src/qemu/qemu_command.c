@@ -4228,6 +4228,92 @@ qemuBuildNVRAMCommandLine(virCommandPtr cmd,
     return 0;
 }
 
+static char *
+qemuBuildCryptoBackendStr(virDomainCryptoDefPtr crypto,
+                          const virDomainDef *def)
+{
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
+
+    (void)(&def == &def);
+
+    if (!crypto->info.alias) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("crypto device alias is not assigned"));
+        return NULL;
+    }
+
+    virBufferAsprintf(&buf, "%s,id=%s",
+                      "cryptodev-backend-builtin",
+                      crypto->info.alias);
+
+    if (virBufferCheckError(&buf) < 0)
+        goto cleanup;
+
+    return virBufferContentAndReset(&buf);
+
+ cleanup:
+    virBufferFreeAndReset(&buf);
+    return NULL;
+}
+
+static char *
+qemuBuildCryptoDeviceStr(virDomainCryptoDefPtr crypto,
+                         const virDomainDef *def,
+                         virQEMUCapsPtr qemuCaps)
+{
+    virBuffer buf = VIR_BUFFER_INITIALIZER;
+
+    if (!crypto->info.alias) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("crypto device alias is not assigned"));
+        return NULL;
+    }
+
+    virBufferAsprintf(&buf, "%s,cryptodev=%s",
+                      "virtio-crypto-pci",
+                      crypto->info.alias);
+
+    if (qemuBuildDeviceAddressStr(&buf, def, &crypto->info, qemuCaps) < 0)
+        goto cleanup;
+
+    if (virBufferCheckError(&buf) < 0)
+        goto cleanup;
+
+    return virBufferContentAndReset(&buf);
+
+ cleanup:
+    virBufferFreeAndReset(&buf);
+    return NULL;
+}
+
+static int
+qemuBuildCryptoCommandLine(virCommandPtr cmd,
+                           const virDomainDef *def,
+                           virQEMUCapsPtr qemuCaps)
+{
+    size_t i;
+
+    for (i = 0; i < def->ncryptos; i++) {
+        char *backStr;
+        char *cryptoStr;
+
+        if (!(backStr = qemuBuildCryptoBackendStr(def->cryptos[i], def)))
+            return -1;
+
+        if (!(cryptoStr = qemuBuildCryptoDeviceStr(def->cryptos[i], def,
+                                                   qemuCaps))) {
+            VIR_FREE(backStr);
+            return -1;
+        }
+
+        virCommandAddArgList(cmd, "-object", backStr, "-device", cryptoStr, NULL);
+
+        VIR_FREE(backStr);
+        VIR_FREE(cryptoStr);
+    }
+
+    return 0;
+}
 
 static char *
 qemuBuildVirtioInputDevStr(const virDomainDef *def,
@@ -10350,6 +10436,9 @@ qemuBuildCommandLine(virQEMUDriverPtr driver,
         goto error;
 
     if (qemuBuildVMCoreInfoCommandLine(cmd, def, qemuCaps) < 0)
+        goto error;
+
+    if (qemuBuildCryptoCommandLine(cmd, def, qemuCaps) < 0)
         goto error;
 
     if (snapshot)

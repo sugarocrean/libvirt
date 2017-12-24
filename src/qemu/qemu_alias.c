@@ -469,6 +469,15 @@ qemuAssignDeviceMemoryAlias(virDomainDefPtr def,
     return 0;
 }
 
+static int
+qemuAssignDeviceCryptoAlias(virDomainCryptoDefPtr hub,
+                         int idx)
+{
+    if (hub->info.alias)
+        return 0;
+
+    return virAsprintf(&hub->info.alias, "crypto%d", idx);
+}
 
 int
 qemuAssignDeviceShmemAlias(virDomainDefPtr def,
@@ -628,6 +637,10 @@ qemuAssignDeviceAliases(virDomainDefPtr def, virQEMUCapsPtr qemuCaps)
     }
     for (i = 0; i < def->nmems; i++) {
         if (qemuAssignDeviceMemoryAlias(NULL, def->mems[i], false) < 0)
+            return -1;
+    }
+    for (i = 0; i < def->ncryptos; i++) {
+        if (qemuAssignDeviceCryptoAlias(def->cryptos[i], i) < 0)
             return -1;
     }
 

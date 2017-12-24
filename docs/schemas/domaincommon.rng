@@ -3955,6 +3955,28 @@
       </interleave>
     </element>
   </define>
+  <define name="crypto">
+    <element name="crypto">
+      <attribute name="model">
+        <choice>
+          <value>virtio</value>
+        </choice>
+      </attribute>
+      <interleave>
+        <optional>
+          <ref name="alias"/>
+        </optional>
+        <optional>
+          <ref name="address"/>
+        </optional>
+        <optional>
+          <element name="driver">
+            <ref name="virtioOptions"/>
+          </element>
+        </optional>
+      </interleave>
+    </element>
+  </define> 
   <define name="parallel">
     <element name="parallel">
       <ref name="qemucdev"/>
@@ -4636,6 +4658,7 @@
             <ref name="tpm"/>
             <ref name="shmem"/>
             <ref name="memorydev"/>
+            <ref name="crypto"/>
           </choice>
         </zeroOrMore>
         <optional>

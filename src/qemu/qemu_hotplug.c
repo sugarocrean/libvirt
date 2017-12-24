@@ -4503,6 +4503,7 @@ qemuDomainRemoveDevice(virQEMUDriverPtr driver,
     case VIR_DOMAIN_DEVICE_TPM:
     case VIR_DOMAIN_DEVICE_PANIC:
     case VIR_DOMAIN_DEVICE_IOMMU:
+    case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_LAST:
         virReportError(VIR_ERR_OPERATION_UNSUPPORTED,
                        _("don't know how to remove a %s device"),

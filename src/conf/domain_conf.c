@@ -256,7 +256,8 @@ VIR_ENUM_IMPL(virDomainDevice, VIR_DOMAIN_DEVICE_LAST,
               "tpm",
               "panic",
               "memory",
-              "iommu")
+              "iommu",
+              "crypto")
 
 VIR_ENUM_IMPL(virDomainDeviceAddress, VIR_DOMAIN_DEVICE_ADDRESS_TYPE_LAST,
               "none",
@@ -2445,6 +2446,17 @@ void virDomainNVRAMDefFree(virDomainNVRAMDefPtr def)
     VIR_FREE(def);
 }
 
+void virDomainCryptoDefFree(virDomainCryptoDefPtr def)
+{
+    if (!def)
+        return;
+
+    virDomainDeviceInfoClear(&def->info);
+    VIR_FREE(def->virtio);
+
+    VIR_FREE(def);
+}
+
 void virDomainWatchdogDefFree(virDomainWatchdogDefPtr def)
 {
     if (!def)
@@ -2737,6 +2749,9 @@ void virDomainDeviceDefFree(virDomainDeviceDefPtr def)
     case VIR_DOMAIN_DEVICE_IOMMU:
         VIR_FREE(def->data.iommu);
         break;
+    case VIR_DOMAIN_DEVICE_CRYPTO:
+        virDomainCryptoDefFree(def->data.crypto);
+        break;
     case VIR_DOMAIN_DEVICE_LAST:
     case VIR_DOMAIN_DEVICE_NONE:
         break;
@@ -2977,6 +2992,10 @@ void virDomainDefFree(virDomainDefPtr def)
     for (i = 0; i < def->nmems; i++)
         virDomainMemoryDefFree(def->mems[i]);
     VIR_FREE(def->mems);
+
+    for (i = 0; i < def->ncryptos; i++)
+        virDomainCryptoDefFree(def->cryptos[i]);
+    VIR_FREE(def->cryptos);
 
     virDomainTPMDefFree(def->tpm);
 
@@ -3584,6 +3603,8 @@ virDomainDeviceGetInfo(virDomainDeviceDefPtr device)
         return &device->data.panic->info;
     case VIR_DOMAIN_DEVICE_MEMORY:
         return &device->data.memory->info;
+    case VIR_DOMAIN_DEVICE_CRYPTO:
+        return &device->data.crypto->info;
 
     /* The following devices do not contain virDomainDeviceInfo */
     case VIR_DOMAIN_DEVICE_LEASE:
@@ -3815,6 +3836,7 @@ virDomainDeviceInfoIterateInternal(virDomainDefPtr def,
     case VIR_DOMAIN_DEVICE_RNG:
     case VIR_DOMAIN_DEVICE_MEMORY:
     case VIR_DOMAIN_DEVICE_IOMMU:
+    case VIR_DOMAIN_DEVICE_CRYPTO:
         break;
     }
 #endif
@@ -5512,6 +5534,7 @@ virDomainDeviceDefValidateInternal(const virDomainDeviceDef *dev,
     case VIR_DOMAIN_DEVICE_PANIC:
     case VIR_DOMAIN_DEVICE_MEMORY:
     case VIR_DOMAIN_DEVICE_IOMMU:
+    case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_NONE:
     case VIR_DOMAIN_DEVICE_LAST:
         break;
@@ -15508,6 +15531,25 @@ virDomainIOMMUDefParseXML(xmlNodePtr node,
     return ret;
 }
 
+static virDomainCryptoDefPtr
+virDomainCryptoDefParseXML(virDomainXMLOptionPtr xmlopt,
+                          xmlNodePtr node,
+                          unsigned int flags)
+{
+   virDomainCryptoDefPtr def;
+
+    if (VIR_ALLOC(def) < 0)
+        return NULL;
+
+    if (virDomainDeviceInfoParseXML(xmlopt, node, NULL, &def->info, flags) < 0)
+        goto error;
+
+    return def;
+
+ error:
+    virDomainCryptoDefFree(def);
+    return NULL;
+}
 
 virDomainDeviceDefPtr
 virDomainDeviceDefParse(const char *xmlStr,
@@ -15662,6 +15704,10 @@ virDomainDeviceDefParse(const char *xmlStr,
         break;
     case VIR_DOMAIN_DEVICE_IOMMU:
         if (!(dev->data.iommu = virDomainIOMMUDefParseXML(node, ctxt)))
+            goto error;
+        break;
+    case VIR_DOMAIN_DEVICE_CRYPTO:
+        if (!(dev->data.crypto = virDomainCryptoDefParseXML(xmlopt, node, flags)))
             goto error;
         break;
     case VIR_DOMAIN_DEVICE_NONE:
@@ -21866,6 +21912,7 @@ virDomainDefCheckABIStabilityFlags(virDomainDefPtr src,
     case VIR_DOMAIN_DEVICE_SHMEM:
     case VIR_DOMAIN_DEVICE_MEMORY:
     case VIR_DOMAIN_DEVICE_IOMMU:
+    case VIR_DOMAIN_DEVICE_CRYPTO:
         break;
     }
 #endif
@@ -24596,6 +24643,66 @@ virDomainShmemDefFormat(virBufferPtr buf,
 
     virBufferAdjustIndent(buf, -2);
     virBufferAddLit(buf, "</shmem>\n");
+
+    return 0;
+}
+
+static int
+virDomainCryptoDefFormat(virBufferPtr buf,
+                        virDomainCryptoDefPtr def,
+                        unsigned int flags)
+{
+    virBuffer childrenBuf = VIR_BUFFER_INITIALIZER;
+    const char *model = NULL;
+
+    switch (def->model) {
+    case VIR_DOMAIN_CRYPTO_MODEL_VIRTIO:
+        model = "virtio";
+        break;
+
+    case VIR_DOMAIN_CRYPTO_MODEL_NONE:
+    default:
+        break;
+    }
+
+    if (!model) {
+        virReportError(VIR_ERR_INTERNAL_ERROR,
+                       _("unexpected crypto model %d"), def->model);
+        return -1;
+    }
+
+    virBufferAsprintf(buf, "<crypto model='%s'", model);
+
+    virBufferSetChildIndent(&childrenBuf, buf);
+
+    virDomainDeviceInfoFormat(&childrenBuf, &def->info, flags);
+
+    if (def->virtio) {
+        virBuffer driverBuf = VIR_BUFFER_INITIALIZER;
+
+        virDomainVirtioOptionsFormat(&driverBuf, def->virtio);
+
+        if (virBufferCheckError(&driverBuf) < 0) {
+            virBufferFreeAndReset(&childrenBuf);
+            return -1;
+        }
+        if (virBufferUse(&driverBuf)) {
+            virBufferAddLit(&childrenBuf, "<driver");
+            virBufferAddBuffer(&childrenBuf, &driverBuf);
+            virBufferAddLit(&childrenBuf, "/>\n");
+        }
+    }
+
+    if (virBufferCheckError(&childrenBuf) < 0)
+        return -1;
+
+    if (!virBufferUse(&childrenBuf)) {
+        virBufferAddLit(buf, "/>\n");
+    } else {
+        virBufferAddLit(buf, ">\n");
+        virBufferAddBuffer(buf, &childrenBuf);
+        virBufferAddLit(buf, "</crypto>\n");
+    }
 
     return 0;
 }
@@ -27853,6 +27960,9 @@ virDomainDeviceDefCopy(virDomainDeviceDefPtr src,
     case VIR_DOMAIN_DEVICE_SHMEM:
         rc = virDomainShmemDefFormat(&buf, src->data.shmem, flags);
         break;
+    case VIR_DOMAIN_DEVICE_CRYPTO:
+        rc = virDomainCryptoDefFormat(&buf, src->data.crypto, flags);
+        break;
 
     case VIR_DOMAIN_DEVICE_NONE:
     case VIR_DOMAIN_DEVICE_SMARTCARD:
@@ -28190,7 +28300,6 @@ virDomainDefHasMemballoon(const virDomainDef *def)
     return def->memballoon &&
            def->memballoon->model != VIR_DOMAIN_MEMBALLOON_MODEL_NONE;
 }
-
 
 #define VIR_DOMAIN_SHORT_NAME_MAX 20
 
