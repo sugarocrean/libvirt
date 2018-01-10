@@ -3802,6 +3802,13 @@ virDomainDeviceInfoIterateInternal(virDomainDefPtr def,
             return rc;
     }
 
+    device.type = VIR_DOMAIN_DEVICE_CRYPTO;
+    for (i = 0; i < def->ncryptos; i++) {
+        device.data.crypto = def->cryptos[i];
+        if ((rc = cb(def, &device, &def->cryptos[i]->info, opaque)) != 0)
+            return rc;
+    }
+
     /* Coverity is not very happy with this - all dead_error_condition */
 #if !STATIC_ANALYSIS
     /* This switch statement is here to trigger compiler warning when adding
@@ -19897,6 +19904,23 @@ virDomainDefParseXML(xmlDocPtr xml,
             goto error;
 
         def->mems[def->nmems++] = mem;
+    }
+    VIR_FREE(nodes);
+
+    /* analysis of crypto devices */
+    if ((n = virXPathNodeSet("./devices/crypto", ctxt, &nodes)) < 0)
+        goto error;
+    if (n && VIR_ALLOC_N(def->cryptos, n) < 0)
+        goto error;
+
+    for (i = 0; i < n; i++) {
+        virDomainCryptoDefPtr crypto = virDomainCryptoDefParseXML(xmlopt,
+                                                                  nodes[i],
+                                                                  flags);	
+        if (!crypto)
+            goto error;
+
+        def->cryptos[def->ncryptos++] = crypto;
     }
     VIR_FREE(nodes);
 

@@ -792,6 +792,9 @@ qemuDomainDeviceCalculatePCIConnectFlags(virDomainDeviceDefPtr dev,
             return 0;
         }
 
+    case VIR_DOMAIN_DEVICE_CRYPTO:
+        return pciFlags;
+
         /* These devices don't ever connect with PCI */
     case VIR_DOMAIN_DEVICE_NVRAM:
     case VIR_DOMAIN_DEVICE_TPM:
@@ -804,7 +807,6 @@ qemuDomainDeviceCalculatePCIConnectFlags(virDomainDeviceDefPtr dev,
     case VIR_DOMAIN_DEVICE_LEASE:
     case VIR_DOMAIN_DEVICE_GRAPHICS:
     case VIR_DOMAIN_DEVICE_IOMMU:
-    case VIR_DOMAIN_DEVICE_CRYPTO:
     case VIR_DOMAIN_DEVICE_LAST:
     case VIR_DOMAIN_DEVICE_NONE:
         return 0;
