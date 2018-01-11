@@ -26889,6 +26889,11 @@ virDomainDefFormatInternal(virDomainDefPtr def,
         virDomainIOMMUDefFormat(buf, def->iommu) < 0)
         goto error;
 
+    for (n = 0; n < def->ncryptos; n++) {
+        if (virDomainCryptoDefFormat(buf, def->cryptos[n], flags) < 0)
+            goto error;
+    }
+
     virBufferAdjustIndent(buf, -2);
     virBufferAddLit(buf, "</devices>\n");
 
